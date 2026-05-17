@@ -18,6 +18,7 @@ export interface Step {
 }
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Role = 'user' | 'admin';
 export type Category =
   | '家常菜'
   | '早餐'
@@ -27,6 +28,14 @@ export type Category =
   | '凉菜'
   | '烘焙'
   | '饮品';
+
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  role: Role;
+  createdAt: string;
+}
 
 export interface Recipe {
   id: string;
@@ -41,8 +50,9 @@ export interface Recipe {
   ingredients: Ingredient[];
   steps: Step[];
   isFavorite: boolean;
+  userId: string; // 所属用户 ID
   createdAt: string;
   updatedAt: string;
 }
 
-export type RecipeFormData = Omit<Recipe, 'id' | 'createdAt' | 'updatedAt' | 'isFavorite'>;
+export type RecipeFormData = Omit<Recipe, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isFavorite'>;

@@ -1,18 +1,21 @@
 import { useState, useMemo } from 'react';
 import { useRecipes } from '@/hooks/useRecipes';
+import { useAuth } from '@/hooks/useAuth';
 import { RecipeCard } from '@/sections/RecipeCard';
 import { RecipeDetail } from '@/sections/RecipeDetail';
 import { RecipeForm } from '@/sections/RecipeForm';
+import { AuthModal } from '@/sections/AuthModal';
 import type { Recipe, RecipeFormData, Category } from '@/types/recipe';
 import { CATEGORIES } from '@/lib/recipeData';
 import {
-  Search, Plus, BookOpen, Heart, ChefHat, LayoutGrid,
+  Search, Plus, BookOpen, Heart, ChefHat, LayoutGrid, User, LogOut, Shield,
 } from 'lucide-react';
 
 type Page = 'recipes' | 'favorites';
 
 export default function App() {
   const { recipes, addRecipe, updateRecipe, deleteRecipe, toggleFavorite } = useRecipes();
+  const { user, isLoggedIn, isAdmin, logout } = useAuth();
 
   const [page, setPage] = useState<Page>('recipes');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'all'>('all');
@@ -21,6 +24,7 @@ export default function App() {
   const [editRecipe, setEditRecipe] = useState<Recipe | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
 
   const filtered = useMemo(() => {
     let list = page === 'favorites' ? recipes.filter(r => r.isFavorite) : recipes;
@@ -102,6 +106,43 @@ export default function App() {
               </span>
             )}
           </button>
+
+          {/* 用户信息区域 */}
+          {isLoggedIn ? (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-2 px-3 mb-2">
+                <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center">
+                  <User size={14} className="text-orange-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-gray-800 truncate">
+                    {user?.username}
+                  </p>
+                  {isAdmin && (
+                    <p className="text-[11px] text-orange-500 flex items-center gap-1">
+                      <Shield size={10} /> 管理员
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+              >
+                <LogOut size={14} />
+                退出登录
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-1">
+              <button
+                onClick={() => setShowAuth('login')}
+                className="w-full px-3 py-2 text-[13px] text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-xl font-medium transition-colors"
+              >
+                登录 / 注册
+              </button>
+            </div>
+          )}
         </nav>
       </aside>
 
@@ -132,13 +173,23 @@ export default function App() {
             </div>
 
             {/* 新建按钮 - 右上角 */}
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[13px] font-medium transition-colors flex-shrink-0"
-            >
-              <Plus size={15} />
-              <span className="hidden sm:inline">新建菜谱</span>
-            </button>
+            {isLoggedIn ? (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[13px] font-medium transition-colors flex-shrink-0"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">新建菜谱</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowAuth('login')}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-600 rounded-xl text-[13px] font-medium transition-colors flex-shrink-0"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">登录/注册</span>
+              </button>
+            )}
           </div>
 
           {/* 分类横向滚动 - 放在顶部 */}
@@ -183,6 +234,21 @@ export default function App() {
               <Heart size={12} className={page === 'favorites' ? 'fill-red-400' : ''} /> 收藏
               {favoriteCount > 0 && <span className="text-[11px] opacity-70">{favoriteCount}</span>}
             </button>
+            {isLoggedIn ? (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-[13px] font-medium ml-auto"
+              >
+                <Plus size={12} /> 新建
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowAuth('login')}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 text-orange-600 rounded-lg text-[13px] font-medium ml-auto"
+              >
+                <User size={12} /> 登录
+              </button>
+            )}
           </div>
         </header>
 
@@ -275,6 +341,15 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Auth Modal */}
+      {showAuth && (
+        <AuthModal
+          mode={showAuth}
+          onClose={() => setShowAuth(null)}
+          onSwitch={() => setShowAuth(showAuth === 'login' ? 'register' : 'login')}
+        />
       )}
     </div>
   );

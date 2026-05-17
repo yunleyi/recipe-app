@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import type { Recipe, StepMedia } from '@/types/recipe';
 import { getDifficultyInfo } from '@/lib/recipeData';
 import {
-  X, Clock, Users, ChefHat, Heart, Edit2, Trash2, Lightbulb, ZoomIn, ZoomOut,
+  X, Clock, Users, ChefHat, Heart, Edit2, Trash2, Lightbulb, ZoomIn, ZoomOut, Lock,
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface RecipeDetailProps {
   recipe: Recipe;
@@ -193,8 +194,13 @@ function MediaLightbox({ media, onClose }: LightboxProps) {
 }
 
 export function RecipeDetail({ recipe, onClose, onEdit, onDelete, onFavorite }: RecipeDetailProps) {
+  const { user, isLoggedIn, isAdmin } = useAuth();
   const diff = getDifficultyInfo(recipe.difficulty);
   const [lightbox, setLightbox] = useState<StepMedia | null>(null);
+
+  // 判断是否是菜谱作者或管理员
+  const canEdit = isLoggedIn && (recipe.userId === user?.id || isAdmin);
+  const canDelete = canEdit;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -342,23 +348,51 @@ export function RecipeDetail({ recipe, onClose, onEdit, onDelete, onFavorite }: 
 
         {/* Footer actions */}
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
-          <button
-            onClick={onFavorite}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-[13px] font-medium transition-colors ${
-              recipe.isFavorite
-                ? 'border-red-200 bg-red-50 text-red-500'
-                : 'border-gray-200 bg-white text-gray-500 hover:border-red-200 hover:text-red-400'
-            }`}
-          >
-            <Heart size={14} className={recipe.isFavorite ? 'fill-red-500' : ''} />
-            {recipe.isFavorite ? '已收藏' : '收藏'}
-          </button>
-          <button onClick={onEdit} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-600 hover:bg-gray-100">
-            <Edit2 size={14} /> 编辑
-          </button>
-          <button onClick={onDelete} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-100 bg-white text-[13px] text-red-400 hover:bg-red-50 ml-auto">
-            <Trash2 size={14} /> 删除
-          </button>
+          {/* 收藏按钮 - 需要登录 */}
+          {isLoggedIn ? (
+            <button
+              onClick={onFavorite}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-[13px] font-medium transition-colors ${
+                recipe.isFavorite
+                  ? 'border-red-200 bg-red-50 text-red-500'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-red-200 hover:text-red-400'
+              }`}
+            >
+              <Heart size={14} className={recipe.isFavorite ? 'fill-red-500' : ''} />
+              {recipe.isFavorite ? '已收藏' : '收藏'}
+            </button>
+          ) : (
+            <button
+              onClick={onFavorite}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-400 cursor-not-allowed"
+              title="登录后可收藏"
+            >
+              <Heart size={14} />
+              收藏
+            </button>
+          )}
+
+          {/* 编辑按钮 - 仅作者和管理员可见 */}
+          {canEdit && (
+            <button onClick={onEdit} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-600 hover:bg-gray-100">
+              <Edit2 size={14} /> 编辑
+            </button>
+          )}
+
+          {/* 删除按钮 - 仅作者和管理员可见 */}
+          {canDelete && (
+            <button onClick={onDelete} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-100 bg-white text-[13px] text-red-400 hover:bg-red-50 ml-auto">
+              <Trash2 size={14} /> 删除
+            </button>
+          )}
+
+          {/* 无权限提示 */}
+          {!canEdit && isLoggedIn && (
+            <div className="ml-auto flex items-center gap-1.5 text-[12px] text-gray-400">
+              <Lock size={12} />
+              <span>非作者无权编辑</span>
+            </div>
+          )}
         </div>
       </div>
 
