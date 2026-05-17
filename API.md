@@ -1,8 +1,8 @@
 # 菜谱记录 API 文档
 
-> 版本：v1.0  
-> 文档日期：2026-05-17  
-> 状态：**待接入**（当前前端使用 localStorage 模拟，后端接入后替换 `src/lib/recipeData.ts` 中的数据层）
+> 版本：v2.0
+> 文档日期：2026-05-17
+> 状态：**待开发**（当前前端使用 localStorage 模拟，后端接入后替换 `src/lib/recipeData.ts` 中的数据层）
 
 ---
 
@@ -10,13 +10,16 @@
 
 1. [接口规范](#接口规范)
 2. [数据模型](#数据模型)
-3. [菜谱接口](#菜谱接口)
-4. [分类接口](#分类接口)
-5. [收藏接口](#收藏接口)
-6. [搜索接口](#搜索接口)
-7. [文件上传接口](#文件上传接口)
-8. [错误码](#错误码)
-9. [技术栈建议](#技术栈建议)
+3. [认证接口](#认证接口)
+4. [用户接口](#用户接口)
+5. [菜谱接口](#菜谱接口)
+6. [分类接口](#分类接口)
+7. [收藏接口](#收藏接口)
+8. [搜索接口](#搜索接口)
+9. [文件上传接口](#文件上传接口)
+10. [错误码](#错误码)
+11. [权限说明](#权限说明)
+12. [技术栈建议](#技术栈建议)
 
 ---
 
@@ -64,13 +67,38 @@ https://api.your-domain.com/v1
 }
 ```
 
-### 认证（预留）
+### 认证方式
 
-后期可通过 `Authorization: Bearer <token>` 头部传递 JWT Token，当前阶段可不做认证。
+采用 **JWT Token** 进行身份认证。
+
+- 用户登录/注册后获取 Token
+- Token 有效期建议 7 天
+- Token 过期后需要刷新或重新登录
+
+**请求头格式**：
+```
+Authorization: Bearer <token>
+```
 
 ---
 
 ## 数据模型
+
+### User（用户）
+
+```typescript
+interface User {
+  id: string;                    // 唯一 ID（UUID）
+  username: string;              // 用户名，登录用，3-20字符
+  email: string;                 // 邮箱，唯一
+  password: string;             // 密码（加密存储，不返回前端）
+  role: 'user' | 'admin';       // 角色：普通用户 / 管理员
+  createdAt: string;             // 注册时间（ISO 8601）
+  updatedAt: string;             // 更新时间（ISO 8601）
+}
+```
+
+> ⚠️ **安全注意**：接口返回的 User 对象中不应包含 `password` 字段
 
 ### Recipe（菜谱）
 
@@ -84,12 +112,13 @@ interface Recipe {
   tags: string[];                // 标签列表
   difficulty: 'easy' | 'medium' | 'hard'; // 难度
   cookTime: number;              // 烹饪时长（分钟）
-  servings: number;              // 份量（人份）
+  servings: number;               // 份量（人份）
   ingredients: Ingredient[];     // 食材清单
   steps: Step[];                 // 步骤列表
-  isFavorite: boolean;           // 是否收藏
-  createdAt: string;             // ISO 8601 时间
-  updatedAt: string;             // ISO 8601 时间
+  isFavorite: boolean;            // 是否收藏
+  userId: string;                // 所属用户 ID
+  createdAt: string;             // 创建时间（ISO 8601）
+  updatedAt: string;             // 更新时间（ISO 8601）
 }
 ```
 
@@ -109,7 +138,7 @@ interface Ingredient {
 interface Step {
   order: number;       // 步骤序号（从 1 开始）
   description: string; // 步骤描述
-  tip?: string;        // 小贴士（可选）
+  tip?: string;         // 小贴士（可选）
 }
 ```
 
@@ -121,6 +150,204 @@ interface Step {
 
 ---
 
+## 认证接口
+
+### 用户注册
+
+```
+POST /auth/register
+```
+
+**请求体**
+
+```json
+{
+  "username": "张三",
+  "email": "zhangsan@example.com",
+  "password": "123456"
+}
+```
+
+**字段校验规则**
+
+| 字段 | 必填 | 规则 |
+|------|------|------|
+| username | ✅ | 3-20 字符，支持中文、字母、数字 |
+| email | ✅ | 合法邮箱格式，唯一 |
+| password | ✅ | 6-20 字符 |
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "注册成功",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "uuid-xxx",
+      "username": "张三",
+      "email": "zhangsan@example.com",
+      "role": "user"
+    }
+  }
+}
+```
+
+---
+
+### 用户登录
+
+```
+POST /auth/login
+```
+
+**请求体**
+
+```json
+{
+  "account": "zhangsan@example.com",
+  "password": "123456"
+}
+```
+
+> ⚠️ account 支持邮箱或用户名登录
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "登录成功",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "uuid-xxx",
+      "username": "张三",
+      "email": "zhangsan@example.com",
+      "role": "user"
+    }
+  }
+}
+```
+
+---
+
+### 刷新 Token
+
+```
+POST /auth/refresh
+```
+
+**请求头**
+
+```
+Authorization: Bearer <refresh_token>
+```
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "刷新成功",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+---
+
+### 退出登录
+
+```
+POST /auth/logout
+```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "已退出登录",
+  "data": null
+}
+```
+
+---
+
+## 用户接口
+
+### 获取当前用户信息
+
+```
+GET /user/me
+```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": "uuid-xxx",
+    "username": "张三",
+    "email": "zhangsan@example.com",
+    "role": "user",
+    "createdAt": "2026-05-17T10:00:00Z"
+  }
+}
+```
+
+---
+
+### 修改密码
+
+```
+PUT /user/password
+```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**请求体**
+
+```json
+{
+  "oldPassword": "123456",
+  "newPassword": "abcdef"
+}
+```
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "密码修改成功",
+  "data": null
+}
+```
+
+---
+
 ## 菜谱接口
 
 ### 获取菜谱列表
@@ -128,6 +355,16 @@ interface Step {
 ```
 GET /recipes
 ```
+
+**请求头（可选）**
+
+```
+Authorization: Bearer <token>
+```
+
+**说明**：
+- 游客：返回所有菜谱（不显示个人操作按钮）
+- 登录用户：返回所有菜谱，当前用户的菜谱显示编辑按钮
 
 **请求参数（Query String）**
 
@@ -160,6 +397,7 @@ GET /recipes
         "cookTime": 15,
         "servings": 2,
         "isFavorite": true,
+        "userId": "user-xxx",
         "createdAt": "2026-05-10T10:00:00Z",
         "updatedAt": "2026-05-10T10:00:00Z"
       }
@@ -170,8 +408,6 @@ GET /recipes
   }
 }
 ```
-
-> ⚠️ 列表接口**不返回** `ingredients` 和 `steps` 字段（减少传输量），详情接口才返回完整数据。
 
 ---
 
@@ -212,6 +448,7 @@ GET /recipes/:id
       { "order": 2, "description": "热锅倒油...", "tip": null }
     ],
     "isFavorite": true,
+    "userId": "user-xxx",
     "createdAt": "2026-05-10T10:00:00Z",
     "updatedAt": "2026-05-10T10:00:00Z"
   }
@@ -225,6 +462,14 @@ GET /recipes/:id
 ```
 POST /recipes
 ```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**说明**：需要登录，普通用户和管理员都可以创建。
 
 **请求体**
 
@@ -282,9 +527,18 @@ POST /recipes
 PUT /recipes/:id
 ```
 
-**请求体**：同创建菜谱（全量更新），所有字段均必传。
+**请求头**
 
-**响应**：返回更新后的完整菜谱对象。
+```
+Authorization: Bearer <token>
+```
+
+**权限规则**：
+- 菜谱作者：可以更新自己的菜谱 ✅
+- 管理员：可以更新任意菜谱 ✅
+- 其他用户：返回 403 无权限 ❌
+
+**请求体**：同创建菜谱（全量更新）。
 
 ---
 
@@ -294,7 +548,15 @@ PUT /recipes/:id
 PATCH /recipes/:id
 ```
 
-**请求体**：仅传需要修改的字段（支持局部更新）。
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**权限规则**：同上。
+
+**请求体**：仅传需要修改的字段。
 
 常用场景：
 - 更新封面图：`{ "coverImage": "https://..." }`
@@ -307,6 +569,17 @@ PATCH /recipes/:id
 ```
 DELETE /recipes/:id
 ```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**权限规则**：
+- 菜谱作者：可以删除自己的菜谱 ✅
+- 管理员：可以删除任意菜谱 ✅
+- 其他用户：返回 403 无权限 ❌
 
 **响应**
 
@@ -357,6 +630,14 @@ GET /categories
 POST /recipes/:id/favorite
 ```
 
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**说明**：需要登录。
+
 **响应**
 
 ```json
@@ -367,10 +648,18 @@ POST /recipes/:id/favorite
 }
 ```
 
+---
+
 ### 取消收藏
 
 ```
 DELETE /recipes/:id/favorite
+```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
 ```
 
 **响应**
@@ -380,6 +669,37 @@ DELETE /recipes/:id/favorite
   "code": 0,
   "message": "success",
   "data": { "isFavorite": false }
+}
+```
+
+---
+
+### 获取我的收藏列表
+
+```
+GET /user/favorites
+```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**说明**：返回当前用户收藏的所有菜谱。
+
+**响应示例**
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "list": [...],
+    "total": 10,
+    "page": 1,
+    "pageSize": 20
+  }
 }
 ```
 
@@ -401,7 +721,7 @@ GET /recipes/search
 | page | number | 否 | 页码，默认 1 |
 | pageSize | number | 否 | 每页数量，默认 20 |
 
-**说明**：搜索范围包括菜名、简介、标签、食材名。建议后端使用全文索引（如 MySQL FULLTEXT / Elasticsearch）提升搜索质量。
+**说明**：搜索范围包括菜名、简介、标签、食材名。
 
 **响应示例**
 
@@ -428,6 +748,14 @@ GET /recipes/search
 ```
 POST /upload/image
 ```
+
+**请求头**
+
+```
+Authorization: Bearer <token>
+```
+
+**说明**：需要登录。
 
 **请求格式**：`multipart/form-data`
 
@@ -462,6 +790,9 @@ POST /upload/image
 | 1003 | 404 | 菜谱不存在 |
 | 1004 | 413 | 上传文件过大 |
 | 1005 | 415 | 不支持的文件类型 |
+| 2001 | 401 | 未登录或 Token 过期 |
+| 2002 | 403 | 无权限操作 |
+| 2003 | 409 | 用户名或邮箱已被注册 |
 | 5001 | 500 | 服务器内部错误 |
 
 **错误响应示例**
@@ -476,57 +807,81 @@ POST /upload/image
 
 ---
 
+## 权限说明
+
+### 角色说明
+
+| 角色 | 说明 | 适用场景 |
+|------|------|----------|
+| 游客 | 不需要登录，只能浏览 | 随意浏览的用户 |
+| user | 普通注册用户，只能管理自己的菜谱 | 大多数用户 |
+| admin | 管理员，可以管理所有内容 | 应用管理者 |
+
+### 权限矩阵
+
+| 操作 | 游客 | 普通用户 | 管理员 |
+|------|------|----------|--------|
+| 浏览菜谱列表 | ✅ | ✅ | ✅ |
+| 查看菜谱详情 | ✅ | ✅ | ✅ |
+| 搜索菜谱 | ✅ | ✅ | ✅ |
+| 创建菜谱 | ❌ | ✅（自己的） | ✅ |
+| 编辑菜谱 | ❌ | ✅（自己的） | ✅ |
+| 删除菜谱 | ❌ | ✅（自己的） | ✅（所有） |
+| 收藏/取消收藏 | ❌ | ✅ | ✅ |
+| 上传图片 | ❌ | ✅ | ✅ |
+| 修改密码 | ❌ | ✅ | ✅ |
+
+### JWT Token 结构建议
+
+```json
+{
+  "sub": "user-uuid-xxx",
+  "role": "user",
+  "exp": 1747500000
+}
+```
+
+---
+
 ## 技术栈建议
 
-以下是几种可选的后端技术栈，供后期选型参考：
+### 推荐方案：Python + FastAPI
 
-### 方案 A：Node.js + Express + MySQL
-
-适合：熟悉 JS/TS 全栈开发、中小型项目
-
-| 组件 | 选型 | 备注 |
-|------|------|------|
-| 运行时 | Node.js 20+ | — |
-| 框架 | Express / Fastify | Fastify 性能更好 |
-| ORM | Prisma / Sequelize | Prisma 类型支持好 |
-| 数据库 | MySQL 8 / PostgreSQL | 推荐 PostgreSQL |
-| 文件存储 | 腾讯云 COS / 阿里云 OSS | — |
-| 搜索 | MySQL FULLTEXT | 数据量大时换 ES |
-
-### 方案 B：Python + FastAPI + PostgreSQL
-
-适合：熟悉 Python、需要快速开发 REST API
+适合：上手快、自动生成文档、个人项目
 
 | 组件 | 选型 | 备注 |
 |------|------|------|
 | 框架 | FastAPI | 自动生成 OpenAPI 文档 |
-| ORM | SQLAlchemy / Tortoise-ORM | — |
-| 数据库 | PostgreSQL | — |
-| 验证 | Pydantic v2 | — |
+| ORM | SQLAlchemy | 数据库操作 |
+| 数据库 | SQLite（开发）/ PostgreSQL（生产） | 轻量够用 |
+| 认证 | python-jose + passlib | JWT + 密码加密 |
+| 验证 | Pydantic v2 | 自动校验请求数据 |
+| 部署 | 腾讯云 SCF / 阿里云函数计算 | 按量付费，适合个人项目 |
 
-### 方案 C：Go + Gin + MySQL
-
-适合：高并发、追求性能
+### 备选方案：Node.js + Express
 
 | 组件 | 选型 | 备注 |
 |------|------|------|
-| 框架 | Gin / Echo | — |
-| ORM | GORM | — |
-| 数据库 | MySQL 8 | — |
+| 框架 | Express / NestJS | NestJS 更适合大型项目 |
+| ORM | Prisma | 类型安全 |
+| 数据库 | MySQL / PostgreSQL | — |
+| 认证 | jsonwebtoken + bcrypt | JWT + 密码加密 |
 
 ### 前端对接方式
 
-前端 `src/lib/recipeData.ts` 目前暴露以下函数，接入后端时，将这些函数替换为对应 API 调用即可：
+前端 `src/lib/recipeData.ts` 目前暴露以下函数，接入后端时：
 
 | 当前函数 | 对应 API |
 |----------|----------|
-| `loadRecipes()` | `GET /recipes` |
-| `saveRecipes()` | 自动由增删改接口处理 |
-| 添加菜谱 | `POST /recipes` |
+| 登录/注册 | `POST /auth/login` / `POST /auth/register` |
+| 获取 Token | 登录成功后返回 |
+| 加载菜谱 | `GET /recipes`（自动带上 Token） |
+| 创建菜谱 | `POST /recipes` |
 | 更新菜谱 | `PUT /recipes/:id` |
 | 删除菜谱 | `DELETE /recipes/:id` |
 | 收藏/取消 | `POST/DELETE /recipes/:id/favorite` |
 | 搜索 | `GET /recipes/search?q=...` |
+| 上传图片 | `POST /upload/image` |
 
 ---
 
