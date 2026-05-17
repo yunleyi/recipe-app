@@ -50,9 +50,46 @@ export default function App() {
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState('zh-CN');
   const [gridColumns, setGridColumns] = useState<'2' | '3' | '4'>('3');
+  const [avatarColor, setAvatarColor] = useState('bg-orange-100');
 
   // 分类显示设置
   const [hiddenCategories, setHiddenCategories] = useState<Category[]>([]);
+
+  // 头像颜色选项
+  const avatarColors = [
+    { name: 'bg-orange-100', text: 'text-orange-600' },
+    { name: 'bg-blue-100', text: 'text-blue-600' },
+    { name: 'bg-green-100', text: 'text-green-600' },
+    { name: 'bg-purple-100', text: 'text-purple-600' },
+    { name: 'bg-pink-100', text: 'text-pink-600' },
+    { name: 'bg-yellow-100', text: 'text-yellow-600' },
+  ];
+
+  // 加载保存的设置
+  useMemo(() => {
+    const saved = localStorage.getItem('user_settings');
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        if (settings.darkMode !== undefined) setDarkMode(settings.darkMode);
+        if (settings.compactMode !== undefined) setCompactMode(settings.compactMode);
+        if (settings.autoSave !== undefined) setAutoSave(settings.autoSave);
+        if (settings.gridColumns !== undefined) setGridColumns(settings.gridColumns);
+        if (settings.hiddenCategories !== undefined) setHiddenCategories(settings.hiddenCategories);
+        if (settings.displayName !== undefined) setDisplayName(settings.displayName);
+        if (settings.avatarColor !== undefined) setAvatarColor(settings.avatarColor);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, []);
+
+  // 网格列数辅助函数
+  const getGridClass = (baseGap: string = 'gap-4') => {
+    const cols = { '2': { sm: 'sm:grid-cols-2', lg: 'lg:grid-cols-3' }, '3': { sm: 'sm:grid-cols-3', lg: 'lg:grid-cols-4' }, '4': { sm: 'sm:grid-cols-4', lg: 'lg:grid-cols-5' } };
+    const c = cols[gridColumns];
+    return `grid grid-cols-2 ${c.sm} ${c.lg} ${baseGap}`;
+  };
 
   // 搜索提交
   const handleSearch = () => {
@@ -159,7 +196,7 @@ export default function App() {
   }, [recipes, selectedFolder]);
 
   return (
-    <div className="min-h-screen bg-[#faf9f7] flex">
+    <div className={`min-h-screen flex ${darkMode ? 'dark' : ''} ${compactMode ? 'compact-mode' : ''}`}>
 
       {/* ── 左侧边栏 ── */}
       <aside className="fixed left-0 top-0 bottom-0 w-[180px] bg-white border-r border-gray-100 flex flex-col z-30 hidden md:flex">
@@ -304,7 +341,7 @@ export default function App() {
             >
               全部
             </button>
-            {CATEGORIES.map(cat => {
+            {CATEGORIES.filter(cat => !hiddenCategories.includes(cat)).map(cat => {
               const count = recipes.filter(r => r.category === cat && (page === 'favorites' ? r.isFavorite : true)).length;
               return (
                 <button
@@ -365,7 +402,7 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className={getGridClass()}>
                   {filtered.map(recipe => (
                     <RecipeCard
                       key={recipe.id}
@@ -384,12 +421,12 @@ export default function App() {
               <div className="bg-white rounded-2xl p-5 mb-4">
                 {isLoggedIn ? (
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+                    <div className={`w-14 h-14 rounded-full ${avatarColor} flex items-center justify-center`}>
                       <User size={24} className="text-orange-600" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h2 className="text-[16px] font-semibold text-gray-900">{user?.username}</h2>
+                        <h2 className="text-[16px] font-semibold text-gray-900">{displayName || user?.username}</h2>
                         {isAdmin && (
                           <span className="flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-600 text-[11px] rounded-full">
                             <Shield size={10} /> 管理员
@@ -466,7 +503,7 @@ export default function App() {
                     /* 菜谱列表 */
                     isLoggedIn ? (
                       userRecipes.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className={`${getGridClass('gap-3')} ${compactMode ? 'compact-card' : ''}`}>
                           {userRecipes.map(recipe => (
                             <RecipeCard
                               key={recipe.id}
@@ -559,7 +596,7 @@ export default function App() {
 
                       {/* 当前收藏夹的菜谱 */}
                       {folderRecipes.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className={`${getGridClass('gap-3')} ${compactMode ? 'compact-card' : ''}`}>
                           {folderRecipes.map(recipe => (
                             <div key={recipe.id} className="relative">
                               <RecipeCard
@@ -793,11 +830,11 @@ export default function App() {
                   <div>
                     <label className="block text-[13px] font-medium text-gray-700 mb-1.5">头像颜色</label>
                     <div className="flex gap-2">
-                      {['bg-orange-100', 'bg-blue-100', 'bg-green-100', 'bg-purple-100', 'bg-pink-100', 'bg-yellow-100'].map((color, i) => (
+                      {avatarColors.map((color) => (
                         <button
-                          key={color}
-                          onClick={() => {}}
-                          className={`w-8 h-8 rounded-full ${color} border-2 ${i === 0 ? 'border-orange-500' : 'border-transparent'}`}
+                          key={color.name}
+                          onClick={() => setAvatarColor(color.name)}
+                          className={`w-8 h-8 rounded-full ${color.name} border-2 ${avatarColor === color.name ? 'border-orange-500 scale-110' : 'border-transparent'} transition-all`}
                         />
                       ))}
                     </div>
@@ -947,11 +984,18 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
-                  // 保存设置
+                  // 保存设置到 localStorage
                   localStorage.setItem('user_settings', JSON.stringify({
                     displayName, email, darkMode, compactMode, autoSave,
-                    notifications, language, gridColumns, hiddenCategories
+                    notifications, language, gridColumns, hiddenCategories, avatarColor
                   }));
+                  // 更新用户显示名称
+                  if (user && displayName !== user.username) {
+                    const updatedUser = { ...user, username: displayName };
+                    localStorage.setItem('current_user', JSON.stringify(updatedUser));
+                    // 刷新页面以应用更改
+                    window.location.reload();
+                  }
                   setShowSettings(false);
                 }}
                 className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[14px] font-medium"

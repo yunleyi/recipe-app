@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Recipe, RecipeFormData, Ingredient, Step, StepMedia, Category, Difficulty } from '@/types/recipe';
 import { CATEGORIES, DIFFICULTIES } from '@/lib/recipeData';
-import { X, Plus, Trash2, Image, Video } from 'lucide-react';
+import { X, Plus, Trash2, Image, Video, Save } from 'lucide-react';
 
 interface RecipeFormProps {
   initial?: Recipe;
@@ -21,6 +21,8 @@ const emptyForm = (): RecipeFormData => ({
   ingredients: [{ name: '', amount: '', unit: '' }],
   steps: [{ order: 1, description: '', tip: '', media: [] }],
 });
+
+const DRAFT_KEY = 'recipe_draft';
 
 // 媒体 URL 输入弹窗
 function MediaUrlInput({
@@ -88,12 +90,56 @@ function MediaUrlInput({
 }
 
 export function RecipeForm({ initial, onSave, onCancel }: RecipeFormProps) {
-  const [form, setForm] = useState<RecipeFormData>(
-    initial ? { ...initial, steps: initial.steps.map(s => ({ ...s, media: s.media ?? [] })) } : emptyForm()
-  );
+  // 检查自动保存设置
+  const autoSaveEnabled = localStorage.getItem('user_settings')
+    ? JSON.parse(localStorage.getItem('user_settings')!).autoSave
+    : true;
+
+  const [form, setForm] = useState<RecipeFormData>(() => {
+    // 如果是编辑现有菜谱，使用初始数据
+    if (initial) return { ...initial, steps: initial.steps.map(s => ({ ...s, media: s.media ?? [] })) };
+    // 否则尝试加载草稿
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      try {
+        return JSON.parse(draft);
+      } catch {
+        return emptyForm();
+      }
+    }
+    return emptyForm();
+  });
   const [tagInput, setTagInput] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [mediaInput, setMediaInput] = useState<{ stepIdx: number; type: 'image' | 'video' } | null>(null);
+  const [hasDraft, setHasDraft] = useState(!initial && !!localStorage.getItem(DRAFT_KEY));
+  const lastSaveRef = useRef<string>('');
+
+  // 自动保存草稿
+  useEffect(() => {
+    if (!autoSaveEnabled || initial) return; // 编辑时不自动保存
+
+    const formStr = JSON.stringify(form);
+    if (formStr === lastSaveRef.current) return; // 没有变化，跳过
+    lastSaveRef.current = formStr;
+
+    const timer = setTimeout(() => {
+      // 只有有内容时才保存草稿
+      if (form.name.trim() || form.description.trim()) {
+        localStorage.setItem(DRAFT_KEY, formStr);
+        setHasDraft(true);
+      }
+    }, 1000); // 1秒防抖
+
+    return () => clearTimeout(timer);
+  }, [form, autoSaveEnabled, initial]);
+
+  // 清除草稿
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setHasDraft(false);
+    lastSaveRef.current = '';
+  };
 
   const set = (key: keyof RecipeFormData, val: unknown) =>
     setForm(f => ({ ...f, [key]: val }));
@@ -118,6 +164,8 @@ export function RecipeForm({ initial, onSave, onCancel }: RecipeFormProps) {
         .filter(s => s.description.trim())
         .map((s, i) => ({ ...s, order: i + 1 })),
     });
+    // 保存成功后清除草稿
+    clearDraft();
   };
 
   /* ---- Ingredient helpers ---- */
@@ -166,9 +214,33 @@ export function RecipeForm({ initial, onSave, onCancel }: RecipeFormProps) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-[17px] font-semibold text-gray-900">
-            {initial ? '编辑菜谱' : '新建菜谱'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-[17px] font-semibold text-gray-900">
+              {initial ? '编辑菜谱' : '新建菜谱'}
+            </h2>
+            {autoSaveEnabled && !initial && (
+              <div className="flex items-center gap-1 text-[12px] text-gray-400">
+                {hasDraft ? (
+                  <>
+                    <Save size={12} className="text-green-500" />
+                    <span>草稿已保存</span>
+                    <button
+                      type="button"
+                      onClick={clearDraft}
+                      className="ml-1 text-orange-500 hover:text-orange-600"
+                    >
+                      清除
+                    </button>
+                  </>
+                ) : form.name || form.description ? (
+                  <>
+                    <Save size={12} />
+                    <span>保存中...</span>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
             <X size={20} />
           </button>
