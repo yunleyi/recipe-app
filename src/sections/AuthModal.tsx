@@ -14,6 +14,7 @@ export function AuthModal({ mode, onClose, onSwitch }: AuthModalProps) {
     username: '',
     email: '',
     password: '',
+    confirmPassword: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,16 @@ export function AuthModal({ mode, onClose, onSwitch }: AuthModalProps) {
     if (mode === 'login') {
       result = await login(form.email, form.password);
     } else {
+      if (form.password !== form.confirmPassword) {
+        setError('两次输入的密码不一致');
+        setLoading(false);
+        return;
+      }
+      if (form.password.length < 6) {
+        setError('密码长度至少 6 位');
+        setLoading(false);
+        return;
+      }
       result = await register(form.username, form.email, form.password);
     }
 
@@ -109,6 +120,22 @@ export function AuthModal({ mode, onClose, onSwitch }: AuthModalProps) {
               />
             </div>
           </div>
+
+          {mode === 'register' && (
+            <div>
+              <label className="block text-[13px] font-medium text-gray-700 mb-1.5">确认密码</label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={e => setForm({ ...form, confirmPassword: e.target.value })}
+                  placeholder="再次输入密码"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400 focus:bg-white transition-colors"
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="text-[13px] text-red-500 bg-red-50 px-3 py-2 rounded-lg">
