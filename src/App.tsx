@@ -216,9 +216,30 @@ export default function App() {
               </div>
             </div>
 
-            {/* 搜索框 - 仅首页显示 */}
+            {/* 搜索框 - 桌面端始终显示，移动端仅首页显示 */}
+            <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2 flex-1">
+              <Search size={14} className="text-gray-400 flex-shrink-0" />
+              <input
+                className="flex-1 bg-transparent text-[14px] outline-none text-gray-700 placeholder:text-gray-400"
+                placeholder="搜索菜名、食材、标签…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="text-gray-300 hover:text-gray-500 text-[12px]">✕</button>
+              )}
+              <button
+                onClick={handleSearch}
+                className="flex-shrink-0 px-2 py-1 bg-orange-500 text-white rounded-lg text-[12px] hover:bg-orange-600 transition-colors"
+              >
+                搜索
+              </button>
+            </div>
+
+            {/* 移动端搜索框 - 仅首页显示 */}
             {mobileTab === 'home' && (
-              <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2">
+              <div className="flex-1 md:hidden flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2">
                 <Search size={14} className="text-gray-400 flex-shrink-0" />
                 <input
                   className="flex-1 bg-transparent text-[14px] outline-none text-gray-700 placeholder:text-gray-400"
@@ -239,18 +260,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 「我的」页面右上角：设置按钮 */}
-            {mobileTab === 'my' && (
-              <button
-                onClick={() => setShowSettings(true)}
-                className="ml-auto flex items-center gap-1.5 px-3 py-2 text-[13px] text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"
-              >
-                <Settings size={16} />
-                <span>设置</span>
-              </button>
-            )}
-
-            {/* 桌面端按钮 */}
+            {/* 桌面端按钮 - 始终显示 */}
             <div className="hidden md:flex items-center gap-2 flex-shrink-0">
               {isLoggedIn ? (
                 <button
@@ -270,36 +280,46 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {/* 「我的」页面移动端右上角：设置按钮 */}
+            <div className="md:hidden flex items-center gap-2 flex-shrink-0 ml-auto">
+              {mobileTab === 'my' && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"
+                >
+                  <Settings size={16} />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* 分类横向滚动 - 仅桌面端和首页显示 */}
-          {mobileTab === 'home' && (
-            <div className="max-w-5xl mx-auto px-4 pb-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
-                  selectedCategory === 'all' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                全部
-              </button>
-              {CATEGORIES.map(cat => {
-                const count = recipes.filter(r => r.category === cat && (page === 'favorites' ? r.isFavorite : true)).length;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
-                      selectedCategory === cat ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {cat}
-                    {count > 0 && <span className={`ml-1 text-[11px] ${selectedCategory === cat ? 'text-orange-100' : 'text-gray-400'}`}>{count}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* 分类横向滚动 - 桌面端始终显示，移动端仅首页显示 */}
+          <div className={`${mobileTab === 'home' ? 'flex' : 'hidden'} md:flex max-w-5xl mx-auto px-4 pb-3 items-center gap-2 overflow-x-auto scrollbar-hide`}>
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+                selectedCategory === 'all' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              全部
+            </button>
+            {CATEGORIES.map(cat => {
+              const count = recipes.filter(r => r.category === cat && (page === 'favorites' ? r.isFavorite : true)).length;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors whitespace-nowrap ${
+                    selectedCategory === cat ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                  {count > 0 && <span className={`ml-1 text-[11px] ${selectedCategory === cat ? 'text-orange-100' : 'text-gray-400'}`}>{count}</span>}
+                </button>
+              );
+            })}
+          </div>
         </header>
 
         {/* 页面内容 */}
