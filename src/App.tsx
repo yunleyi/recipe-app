@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useRecipes } from '@/hooks/useRecipes';
 import { useAuth } from '@/hooks/useAuth';
+import { useFavoriteFolders } from '@/hooks/useFavoriteFolders';
 import { RecipeCard } from '@/sections/RecipeCard';
 import { RecipeDetail } from '@/sections/RecipeDetail';
 import { RecipeDetailPage } from '@/sections/RecipeDetailPage';
@@ -9,7 +10,9 @@ import { AuthModal } from '@/sections/AuthModal';
 import type { Recipe, RecipeFormData, Category } from '@/types/recipe';
 import { CATEGORIES } from '@/lib/recipeData';
 import {
-  Search, Plus, BookOpen, Heart, ChefHat, LayoutGrid, User, LogOut, Shield, ChevronRight,
+  Search, Plus, BookOpen, Heart, ChefHat, LayoutGrid, User, LogOut, Shield,
+  FolderHeart, BookMarked, X, Check, FolderPlus, Settings, SlidersHorizontal,
+  UserCircle, Palette, Tag, Globe,
 } from 'lucide-react';
 
 type Page = 'recipes' | 'favorites';
@@ -18,6 +21,7 @@ type MobileTab = 'home' | 'my';
 export default function App() {
   const { recipes, addRecipe, updateRecipe, deleteRecipe, toggleFavorite } = useRecipes();
   const { user, isLoggedIn, isAdmin, logout } = useAuth();
+  const { folders, addFolder, deleteFolder } = useFavoriteFolders();
 
   const [page, setPage] = useState<Page>('recipes');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'all'>('all');
@@ -28,8 +32,33 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState<'login' | 'register' | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('home');
-  const [favoritesExpanded, setFavoritesExpanded] = useState(false);
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [mobileViewRecipe, setMobileViewRecipe] = useState<Recipe | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showFolderPicker, setShowFolderPicker] = useState<string | null>(null); // 正在选择收藏夹的菜谱ID
+  const [myPageTab, setMyPageTab] = useState<'recipes' | 'favorites'>('recipes');
+  const [selectedFolder, setSelectedFolder] = useState<string>('default');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'general' | 'common' | 'category'>('profile');
+
+  // 设置相关状态
+  const [displayName, setDisplayName] = useState(user?.username || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [darkMode, setDarkMode] = useState(false);
+  const [compactMode, setCompactMode] = useState(false);
+  const [autoSave, setAutoSave] = useState(true);
+  const [notifications, setNotifications] = useState(true);
+  const [language, setLanguage] = useState('zh-CN');
+  const [gridColumns, setGridColumns] = useState<'2' | '3' | '4'>('3');
+
+  // 分类显示设置
+  const [hiddenCategories, setHiddenCategories] = useState<Category[]>([]);
+
+  // 搜索提交
+  const handleSearch = () => {
+    // 搜索已经在 input 的 onChange 中实时过滤，这里可以加个确认动作
+    // 或者用于移动端回车搜索
+  };
 
   const filtered = useMemo(() => {
     let list = page === 'favorites' ? recipes.filter(r => r.isFavorite) : recipes;
@@ -103,6 +132,32 @@ export default function App() {
 
   const favoriteCount = recipes.filter(r => r.isFavorite).length;
 
+  // 收藏到指定收藏夹
+  const handleFavorite = (id: string, folderId: string) => {
+    toggleFavorite(id, folderId);
+    setShowFolderPicker(null);
+  };
+
+  // 创建新收藏夹
+  const handleCreateFolder = () => {
+    if (newFolderName.trim()) {
+      addFolder(newFolderName.trim());
+      setNewFolderName('');
+      setShowNewFolderInput(false);
+    }
+  };
+
+  // 获取当前用户创建的菜谱
+  const userRecipes = useMemo(() => {
+    if (!user) return [];
+    return recipes.filter(r => r.userId === user.id);
+  }, [recipes, user]);
+
+  // 获取指定收藏夹的菜谱
+  const folderRecipes = useMemo(() => {
+    return recipes.filter(r => r.isFavorite && (r.favoriteFolderId || 'default') === selectedFolder);
+  }, [recipes, selectedFolder]);
+
   return (
     <div className="min-h-screen bg-[#faf9f7] flex">
 
@@ -170,11 +225,29 @@ export default function App() {
                   placeholder="搜索菜名、食材、标签…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
                 />
                 {search && (
                   <button onClick={() => setSearch('')} className="text-gray-300 hover:text-gray-500 text-[12px]">✕</button>
                 )}
+                <button
+                  onClick={handleSearch}
+                  className="flex-shrink-0 px-2 py-1 bg-orange-500 text-white rounded-lg text-[12px] hover:bg-orange-600 transition-colors"
+                >
+                  搜索
+                </button>
               </div>
+            )}
+
+            {/* 「我的」页面右上角：设置按钮 */}
+            {mobileTab === 'my' && (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="ml-auto flex items-center gap-1.5 px-3 py-2 text-[13px] text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-colors"
+              >
+                <Settings size={16} />
+                <span>设置</span>
+              </button>
             )}
 
             {/* 桌面端按钮 */}
@@ -287,7 +360,7 @@ export default function App() {
           ) : (
             /* 「我的」页面 */
             <div className="pb-32">
-              {/* 用户卡片 */}
+              {/* 上部分：用户信息 */}
               <div className="bg-white rounded-2xl p-5 mb-4">
                 {isLoggedIn ? (
                   <div className="flex items-center gap-4">
@@ -321,57 +394,179 @@ export default function App() {
                     <p className="text-[14px] text-gray-500 mb-3">登录后享受更多功能</p>
                     <button
                       onClick={() => setShowAuth('login')}
-                      className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[14px] font-medium transition-colors"
-                    >
-                      登录 / 注册
-                    </button>
-                  </div>
-                )}
+                        className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[14px] font-medium transition-colors"
+                      >
+                        登录 / 注册
+                      </button>
+                    </div>
+                  )}
               </div>
 
-              {/* 收藏列表 - 可折叠 */}
+              {/* 下部分：选项卡切换（菜谱 / 收藏） */}
               <div className="bg-white rounded-2xl overflow-hidden">
-                <button
-                  onClick={() => setFavoritesExpanded(!favoritesExpanded)}
-                  className="w-full px-5 py-4 flex items-center gap-2 hover:bg-gray-50 transition-colors"
-                >
-                  <Heart size={16} className="text-red-400 fill-red-400" />
-                  <h3 className="text-[15px] font-semibold text-gray-900">我的收藏</h3>
-                  {favoriteCount > 0 && (
-                    <span className="ml-auto text-[12px] text-gray-400">{favoriteCount} 道菜谱</span>
-                  )}
-                  <ChevronRight size={16} className={`text-gray-300 transition-transform ${favoritesExpanded ? 'rotate-90' : ''}`} />
-                </button>
+                {/* 选项卡头部 */}
+                <div className="flex border-b border-gray-100">
+                  <button
+                    onClick={() => setMyPageTab('recipes')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3.5 text-[14px] font-medium transition-colors ${
+                      myPageTab === 'recipes'
+                        ? 'text-orange-600 border-b-2 border-orange-500'
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <BookMarked size={16} />
+                    菜谱
+                    <span className={`ml-1 text-[11px] px-1.5 py-0.5 rounded-full ${
+                      myPageTab === 'recipes' ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {userRecipes.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setMyPageTab('favorites')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3.5 text-[14px] font-medium transition-colors ${
+                      myPageTab === 'favorites'
+                        ? 'text-red-500 border-b-2 border-red-400'
+                        : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <Heart size={16} className={myPageTab === 'favorites' ? 'fill-red-400' : ''} />
+                    收藏
+                    <span className={`ml-1 text-[11px] px-1.5 py-0.5 rounded-full ${
+                      myPageTab === 'favorites' ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {favoriteCount}
+                    </span>
+                  </button>
+                </div>
 
-                {favoritesExpanded && (
-                  <div className="border-t border-gray-100">
-                    {favoriteCount === 0 ? (
-                      <div className="py-12 text-center">
-                        <div className="text-4xl mb-3">🤍</div>
-                        <p className="text-[14px] text-gray-400">还没有收藏任何菜谱</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-gray-50">
-                        {recipes.filter(r => r.isFavorite).map(recipe => (
+                {/* 选项卡内容 */}
+                <div className="p-4">
+                  {myPageTab === 'recipes' ? (
+                    /* 菜谱列表 */
+                    isLoggedIn ? (
+                      userRecipes.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          {userRecipes.map(recipe => (
+                            <RecipeCard
+                              key={recipe.id}
+                              recipe={recipe}
+                              onClick={handleCardClick}
+                              onFavorite={() => toggleFavorite(recipe.id)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-12 text-center">
+                          <div className="text-4xl mb-3">📝</div>
+                          <p className="text-[14px] text-gray-400 mb-3">还没有创建任何菜谱</p>
                           <button
-                            key={recipe.id}
-                            onClick={() => handleCardClick(recipe)}
-                            className="w-full px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                            onClick={() => setShowForm(true)}
+                            className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-[14px] hover:bg-orange-600"
                           >
-                            <div className="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
-                              {recipe.coverImage ? <img src={recipe.coverImage} alt="" className="w-full h-full object-cover" /> : '🍽️'}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-[14px] font-medium text-gray-900 truncate">{recipe.name}</h4>
-                              <p className="text-[12px] text-gray-400 truncate">{recipe.category}</p>
-                            </div>
-                            <Heart size={14} className="text-red-400 fill-red-400 flex-shrink-0" />
+                            + 创建菜谱
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <div className="py-12 text-center">
+                        <div className="text-4xl mb-3">🔐</div>
+                        <p className="text-[14px] text-gray-400">登录后查看您创建的菜谱</p>
+                      </div>
+                    )
+                  ) : (
+                    /* 收藏列表 */
+                    <div>
+                      {/* 收藏夹选择 */}
+                      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+                        {folders.map(folder => (
+                          <button
+                            key={folder.id}
+                            onClick={() => setSelectedFolder(folder.id)}
+                            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors ${
+                              selectedFolder === folder.id
+                                ? 'bg-red-50 text-red-500 border border-red-200'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            <FolderHeart size={14} className={selectedFolder === folder.id ? 'fill-red-400' : ''} />
+                            {folder.name}
+                            <span className="text-[11px] opacity-60">
+                              ({recipes.filter(r => r.isFavorite && (r.favoriteFolderId || 'default') === folder.id).length})
+                            </span>
+                            {folder.id !== 'default' && (
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`确定删除收藏夹「${folder.name}」？`)) {
+                                    deleteFolder(folder.id);
+                                    if (selectedFolder === folder.id) {
+                                      setSelectedFolder('default');
+                                    }
+                                  }
+                                }}
+                                className="ml-1 text-gray-400 hover:text-red-500"
+                              >
+                                <X size={12} />
+                              </span>
+                            )}
                           </button>
                         ))}
+                        {showNewFolderInput ? (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <input
+                              type="text"
+                              value={newFolderName}
+                              onChange={e => setNewFolderName(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+                              placeholder="收藏夹名称"
+                              className="w-24 px-2 py-1 text-[13px] border border-gray-200 rounded-full outline-none focus:border-orange-400"
+                              autoFocus
+                            />
+                            <button onClick={handleCreateFolder} className="text-orange-500"><Check size={16} /></button>
+                            <button onClick={() => { setShowNewFolderInput(false); setNewFolderName(''); }} className="text-gray-400"><X size={16} /></button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowNewFolderInput(true)}
+                            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-[13px] text-gray-400 hover:text-orange-500 hover:bg-orange-50 transition-colors"
+                          >
+                            <FolderPlus size={14} />
+                            新建
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* 当前收藏夹的菜谱 */}
+                      {folderRecipes.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          {folderRecipes.map(recipe => (
+                            <div key={recipe.id} className="relative">
+                              <RecipeCard
+                                recipe={recipe}
+                                onClick={handleCardClick}
+                                onFavorite={() => toggleFavorite(recipe.id)}
+                              />
+                              {/* 点击更改收藏夹 */}
+                              <button
+                                onClick={() => setShowFolderPicker(recipe.id)}
+                                className="absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full flex items-center justify-center text-gray-400 hover:text-orange-500 shadow-sm"
+                                title="更改收藏夹"
+                              >
+                                <FolderHeart size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-12 text-center">
+                          <div className="text-4xl mb-3">🤍</div>
+                          <p className="text-[14px] text-gray-400">该收藏夹还没有菜谱</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -474,6 +669,278 @@ export default function App() {
           onClose={() => setShowAuth(null)}
           onSwitch={() => setShowAuth(showAuth === 'login' ? 'register' : 'login')}
         />
+      )}
+
+      {/* 收藏夹选择弹窗 */}
+      {showFolderPicker && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => setShowFolderPicker(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-gray-900">选择收藏夹</h3>
+              <button onClick={() => setShowFolderPicker(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-3 max-h-64 overflow-y-auto">
+              {folders.map(folder => (
+                <button
+                  key={folder.id}
+                  onClick={() => handleFavorite(showFolderPicker, folder.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${
+                    recipes.find(r => r.id === showFolderPicker)?.favoriteFolderId === folder.id ||
+                    (!recipes.find(r => r.id === showFolderPicker)?.favoriteFolderId && folder.id === 'default')
+                      ? 'bg-red-50 text-red-500'
+                      : 'hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <FolderHeart size={18} className={
+                    recipes.find(r => r.id === showFolderPicker)?.favoriteFolderId === folder.id ||
+                    (!recipes.find(r => r.id === showFolderPicker)?.favoriteFolderId && folder.id === 'default')
+                      ? 'fill-red-400'
+                      : ''
+                  } />
+                  <span className="text-[14px]">{folder.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 设置弹窗 */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onClick={() => setShowSettings(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-[16px] font-semibold text-gray-900 flex items-center gap-2">
+                <SlidersHorizontal size={18} className="text-orange-500" />
+                设置
+              </h3>
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* 选项卡 */}
+            <div className="flex border-b border-gray-100 flex-shrink-0">
+              {[
+                { key: 'profile', label: '个人', icon: UserCircle },
+                { key: 'general', label: '常规', icon: Palette },
+                { key: 'common', label: '通用', icon: Globe },
+                { key: 'category', label: '分类', icon: Tag },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setSettingsTab(tab.key as typeof settingsTab)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-3 text-[13px] font-medium transition-colors ${
+                    settingsTab === tab.key
+                      ? 'text-orange-600 border-b-2 border-orange-500'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <tab.icon size={14} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 内容 */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* 个人设置 */}
+              {settingsTab === 'profile' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[13px] font-medium text-gray-700 mb-1.5">显示名称</label>
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={e => setDisplayName(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400"
+                      placeholder="输入显示名称"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-gray-700 mb-1.5">邮箱地址</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400"
+                      placeholder="输入邮箱地址"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-gray-700 mb-1.5">头像颜色</label>
+                    <div className="flex gap-2">
+                      {['bg-orange-100', 'bg-blue-100', 'bg-green-100', 'bg-purple-100', 'bg-pink-100', 'bg-yellow-100'].map((color, i) => (
+                        <button
+                          key={color}
+                          onClick={() => {}}
+                          className={`w-8 h-8 rounded-full ${color} border-2 ${i === 0 ? 'border-orange-500' : 'border-transparent'}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 常规设置 */}
+              {settingsTab === 'general' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-[14px] font-medium text-gray-800">深色模式</p>
+                      <p className="text-[12px] text-gray-400 mt-0.5">开启后界面变为深色主题</p>
+                    </div>
+                    <button
+                      onClick={() => setDarkMode(!darkMode)}
+                      className={`w-12 h-6 rounded-full transition-colors ${darkMode ? 'bg-orange-500' : 'bg-gray-200'} relative`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${darkMode ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-[14px] font-medium text-gray-800">紧凑模式</p>
+                      <p className="text-[12px] text-gray-400 mt-0.5">减少卡片间距，显示更多内容</p>
+                    </div>
+                    <button
+                      onClick={() => setCompactMode(!compactMode)}
+                      className={`w-12 h-6 rounded-full transition-colors ${compactMode ? 'bg-orange-500' : 'bg-gray-200'} relative`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${compactMode ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-[14px] font-medium text-gray-800">自动保存</p>
+                      <p className="text-[12px] text-gray-400 mt-0.5">编辑时自动保存草稿</p>
+                    </div>
+                    <button
+                      onClick={() => setAutoSave(!autoSave)}
+                      className={`w-12 h-6 rounded-full transition-colors ${autoSave ? 'bg-orange-500' : 'bg-gray-200'} relative`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${autoSave ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 通用设置 */}
+              {settingsTab === 'common' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-[14px] font-medium text-gray-800">消息通知</p>
+                      <p className="text-[12px] text-gray-400 mt-0.5">接收收藏更新等通知</p>
+                    </div>
+                    <button
+                      onClick={() => setNotifications(!notifications)}
+                      className={`w-12 h-6 rounded-full transition-colors ${notifications ? 'bg-orange-500' : 'bg-gray-200'} relative`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${notifications ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-gray-700 mb-1.5">界面语言</label>
+                    <select
+                      value={language}
+                      onChange={e => setLanguage(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400 bg-white"
+                    >
+                      <option value="zh-CN">简体中文</option>
+                      <option value="zh-TW">繁體中文</option>
+                      <option value="en-US">English</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-medium text-gray-700 mb-1.5">网格列数</label>
+                    <div className="flex gap-2">
+                      {(['2', '3', '4'] as const).map(col => (
+                        <button
+                          key={col}
+                          onClick={() => setGridColumns(col)}
+                          className={`flex-1 py-2 rounded-xl text-[13px] font-medium transition-colors ${
+                            gridColumns === col
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {col} 列
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 分类设置 */}
+              {settingsTab === 'category' && (
+                <div className="space-y-3">
+                  <p className="text-[13px] text-gray-500 mb-3">选择要在首页显示的分类，隐藏的分类将不出现在筛选栏</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => {
+                          if (hiddenCategories.includes(cat)) {
+                            setHiddenCategories(hiddenCategories.filter(c => c !== cat));
+                          } else {
+                            setHiddenCategories([...hiddenCategories, cat]);
+                          }
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${
+                          hiddenCategories.includes(cat)
+                            ? 'bg-gray-100 text-gray-400 line-through'
+                            : 'bg-orange-50 text-orange-600'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                          hiddenCategories.includes(cat) ? 'border-gray-300' : 'border-orange-500 bg-orange-500'
+                        }`}>
+                          {hiddenCategories.includes(cat) ? '' : <Check size={10} className="text-white" />}
+                        </span>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  {hiddenCategories.length > 0 && (
+                    <button
+                      onClick={() => setHiddenCategories([])}
+                      className="w-full py-2 text-[13px] text-orange-500 hover:text-orange-600"
+                    >
+                      显示全部分类
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[14px] text-gray-600 hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  // 保存设置
+                  localStorage.setItem('user_settings', JSON.stringify({
+                    displayName, email, darkMode, compactMode, autoSave,
+                    notifications, language, gridColumns, hiddenCategories
+                  }));
+                  setShowSettings(false);
+                }}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[14px] font-medium"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

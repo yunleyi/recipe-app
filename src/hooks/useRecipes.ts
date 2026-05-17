@@ -59,10 +59,19 @@ export function useRecipes() {
   );
 
   const toggleFavorite = useCallback(
-    (id: string): void => {
-      const updated = recipes.map(r =>
-        r.id === id ? { ...r, isFavorite: !r.isFavorite } : r
-      );
+    (id: string, folderId?: string): void => {
+      const updated = recipes.map(r => {
+        if (r.id === id) {
+          if (!r.isFavorite) {
+            // 收藏：设置收藏夹
+            return { ...r, isFavorite: true, favoriteFolderId: folderId || 'default' };
+          } else {
+            // 取消收藏
+            return { ...r, isFavorite: false, favoriteFolderId: undefined };
+          }
+        }
+        return r;
+      });
       persist(updated);
     },
     [recipes, persist]

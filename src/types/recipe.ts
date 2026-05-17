@@ -37,6 +37,13 @@ export interface User {
   createdAt: string;
 }
 
+// 收藏夹
+export interface FavoriteFolder {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface Recipe {
   id: string;
   name: string;
@@ -50,6 +57,7 @@ export interface Recipe {
   ingredients: Ingredient[];
   steps: Step[];
   isFavorite: boolean;
+  favoriteFolderId?: string; // 收藏夹ID，不填则为默认收藏夹
   userId: string; // 所属用户 ID
   createdAt: string;
   updatedAt: string;
