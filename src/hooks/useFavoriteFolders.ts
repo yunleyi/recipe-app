@@ -1,89 +1,70 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { FavoriteFolder } from '@/types/recipe';
+import { userApi } from '@/lib/api';
 import { useAuth } from './useAuth';
 
-const FAVORITE_FOLDERS_KEY = 'recipe_favorite_folders';
-const DEFAULT_FOLDER: FavoriteFolder = {
-  id: 'default',
-  name: '默认收藏夹',
-  createdAt: new Date().toISOString(),
-};
-
-function loadFolders(): FavoriteFolder[] {
-  try {
-    const stored = localStorage.getItem(FAVORITE_FOLDERS_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // 确保默认收藏夹存在
-      if (!parsed.find((f: FavoriteFolder) => f.id === 'default')) {
-        return [DEFAULT_FOLDER, ...parsed];
-      }
-      return parsed;
-    }
-  } catch {
-    // ignore
-  }
-  return [DEFAULT_FOLDER];
-}
-
-function saveFolders(folders: FavoriteFolder[]) {
-  localStorage.setItem(FAVORITE_FOLDERS_KEY, JSON.stringify(folders));
-}
-
 export function useFavoriteFolders() {
-  const { user } = useAuth();
-  const [folders, setFolders] = useState<FavoriteFolder[]>([DEFAULT_FOLDER]);
+  const { isLoggedIn } = useAuth();
+  const [folders, setFolders] = useState<FavoriteFolder[]>([]);
 
-  // 加载当前用户的收藏夹
-  useEffect(() => {
-    if (user) {
-      const stored = loadFolders();
-      // 按用户隔离（简单用 user id 前缀）
-      const userKey = `user_${user.id}_folders`;
-      const userStored = localStorage.getItem(userKey);
-      if (userStored) {
-        try {
-          setFolders(JSON.parse(userStored));
-        } catch {
-          setFolders([DEFAULT_FOLDER]);
-        }
-      } else {
-        // 首次使用，加载全局再存到用户专属
-        setFolders(stored);
-        localStorage.setItem(userKey, JSON.stringify(stored));
+  const fetchFolders = useCallback(async () => {
+    if (!isLoggedIn) {
+      setFolders([{ id: 'default', name: '默认收藏夹', createdAt: new Date().toISOString() }]);
+      return;
+    }
+    try {
+      const result = await userApi.getFolders();
+      if (result.code === 0 && Array.isArray(result.data)) {
+        setFolders(result.data.map((f: { id: string; name: string; createdAt: string }) => ({
+          id: f.id,
+          name: f.name,
+          createdAt: f.createdAt,
+        })));
       }
-    } else {
-      setFolders([DEFAULT_FOLDER]);
+    } catch (err) {
+      console.error('加载收藏夹失败:', err);
+      setFolders([{ id: 'default', name: '默认收藏夹', createdAt: new Date().toISOString() }]);
     }
-  }, [user]);
+  }, [isLoggedIn]);
 
-  const persist = useCallback((updated: FavoriteFolder[]) => {
-    setFolders(updated);
-    if (user) {
-      const userKey = `user_${user.id}_folders`;
-      localStorage.setItem(userKey, JSON.stringify(updated));
+  useEffect(() => {
+    fetchFolders();
+  }, [fetchFolders]);
+
+  const addFolder = useCallback(async (name: string): Promise<FavoriteFolder> => {
+    try {
+      const result = await userApi.createFolder(name);
+      if (result.code === 0) {
+        const newFolder: FavoriteFolder = {
+          id: result.data.id,
+          name: result.data.name,
+          createdAt: result.data.createdAt,
+        };
+        setFolders(prev => [...prev, newFolder]);
+        return newFolder;
+      }
+      throw new Error(result.message);
+    } catch (err) {
+      console.error('创建收藏夹失败:', err);
+      throw err;
     }
-    saveFolders(updated);
-  }, [user]);
+  }, []);
 
-  const addFolder = useCallback((name: string): FavoriteFolder => {
-    const newFolder: FavoriteFolder = {
-      id: `folder_${Date.now()}`,
-      name,
-      createdAt: new Date().toISOString(),
-    };
-    persist([...folders, newFolder]);
-    return newFolder;
-  }, [folders, persist]);
+  const deleteFolder = useCallback(async (id: string) => {
+    if (id.startsWith('default_') || id === 'default') return;
+    try {
+      setFolders(prev => prev.filter(f => f.id !== id));
+      await userApi.deleteFolder(id);
+    } catch (err) {
+      console.error('删除收藏夹失败:', err);
+      fetchFolders(); // 失败时重新加载
+    }
+  }, [fetchFolders]);
 
-  const deleteFolder = useCallback((id: string) => {
-    if (id === 'default') return; // 不能删除默认收藏夹
-    persist(folders.filter(f => f.id !== id));
-  }, [folders, persist]);
-
-  const renameFolder = useCallback((id: string, name: string) => {
-    persist(folders.map(f => f.id === id ? { ...f, name } : f));
-  }, [folders, persist]);
+  const renameFolder = useCallback((_id: string, _name: string) => {
+    // 暂时只做本地更新（后续可扩展 API）
+    setFolders(prev => prev.map(f => f.id === _id ? { ...f, name: _name } : f));
+  }, []);
 
   return { folders, addFolder, deleteFolder, renameFolder };
 }

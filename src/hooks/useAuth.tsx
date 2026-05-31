@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '@/types/recipe';
+import { authApi } from '@/lib/api';
 
 interface AuthState {
   user: User | null;
@@ -44,89 +45,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // 模拟登录（后续对接真实 API）
-  const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    // 模拟网络延迟
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // 简单的客户端验证
-    if (!email || !password) {
-      return { success: false, message: '请填写邮箱和密码' };
-    }
-    if (!email.includes('@')) {
-      return { success: false, message: '请输入有效的邮箱' };
-    }
-    if (password.length < 6) {
-      return { success: false, message: '密码至少 6 位' };
+  const login = async (account: string, password: string): Promise<{ success: boolean; message: string }> => {
+    if (!account || !password) {
+      return { success: false, message: '请填写账号和密码' };
     }
 
-    // 模拟登录成功
-    const user: User = {
-      id: 'user_' + Date.now(),
-      username: email.split('@')[0],
-      email,
-      role: email.includes('admin') ? 'admin' : 'user',
-      createdAt: new Date().toISOString(),
-    };
-    const token = 'mock_token_' + Date.now();
+    try {
+      const result = await authApi.login(account, password);
+      if (result.code !== 0) {
+        return { success: false, message: result.message || '登录失败' };
+      }
 
-    const authData = { user, token };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
+      const { token, refreshToken, user: userData } = result.data;
+      const user: User = {
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        role: userData.role as 'user' | 'admin',
+        createdAt: new Date().toISOString(),
+      };
 
-    setAuth({
-      user,
-      token,
-      isLoggedIn: true,
-      isAdmin: user.role === 'admin',
-    });
+      const authData = { user, token, refreshToken };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
 
-    return { success: true, message: '登录成功' };
+      setAuth({
+        user,
+        token,
+        isLoggedIn: true,
+        isAdmin: user.role === 'admin',
+      });
+
+      return { success: true, message: '登录成功' };
+    } catch (err) {
+      console.error('登录失败:', err);
+      return { success: false, message: '网络错误，请检查服务是否启动' };
+    }
   };
 
-  // 模拟注册
   const register = async (username: string, email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    // 模拟网络延迟
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // 验证
     if (!username || !email || !password) {
       return { success: false, message: '请填写所有字段' };
     }
     if (username.length < 2 || username.length > 20) {
       return { success: false, message: '用户名 2-20 个字符' };
     }
-    if (!email.includes('@')) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return { success: false, message: '请输入有效的邮箱' };
     }
     if (password.length < 6) {
       return { success: false, message: '密码至少 6 位' };
     }
 
-    // 模拟注册成功，自动登录
-    const user: User = {
-      id: 'user_' + Date.now(),
-      username,
-      email,
-      role: 'user',
-      createdAt: new Date().toISOString(),
-    };
-    const token = 'mock_token_' + Date.now();
+    try {
+      const result = await authApi.register(username, email, password);
+      if (result.code !== 0) {
+        return { success: false, message: result.message || '注册失败' };
+      }
 
-    const authData = { user, token };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
+      const { token, refreshToken, user: userData } = result.data;
+      const user: User = {
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        role: userData.role as 'user' | 'admin',
+        createdAt: new Date().toISOString(),
+      };
 
-    setAuth({
-      user,
-      token,
-      isLoggedIn: true,
-      isAdmin: false,
-    });
+      const authData = { user, token, refreshToken };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
 
-    return { success: true, message: '注册成功' };
+      setAuth({
+        user,
+        token,
+        isLoggedIn: true,
+        isAdmin: false,
+      });
+
+      return { success: true, message: '注册成功' };
+    } catch (err) {
+      console.error('注册失败:', err);
+      return { success: false, message: '网络错误，请检查服务是否启动' };
+    }
   };
 
-  // 登出
   const logout = () => {
+    // 通知后端清除 refresh token
+    authApi.logout().catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
     setAuth({
       user: null,

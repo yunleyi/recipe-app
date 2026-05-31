@@ -113,13 +113,13 @@ export default function App() {
     return list;
   }, [recipes, page, selectedCategory, search]);
 
-  const handleSave = (data: RecipeFormData) => {
+  const handleSave = async (data: RecipeFormData) => {
     if (editRecipe) {
-      updateRecipe(editRecipe.id, data);
+      await updateRecipe(editRecipe.id, data);
       setViewRecipe({ ...editRecipe, ...data, updatedAt: new Date().toISOString() });
       setEditRecipe(null);
     } else {
-      const r = addRecipe(data);
+      const r = await addRecipe(data);
       setShowForm(false);
       setViewRecipe(r);
     }
@@ -176,9 +176,9 @@ export default function App() {
   };
 
   // 创建新收藏夹
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (newFolderName.trim()) {
-      addFolder(newFolderName.trim());
+      await addFolder(newFolderName.trim());
       setNewFolderName('');
       setShowNewFolderInput(false);
     }

@@ -1,81 +1,117 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Recipe, RecipeFormData } from '@/types/recipe';
-import { loadRecipes, saveRecipes, generateId } from '@/lib/recipeData';
+import { recipesApi } from '@/lib/api';
 import { useAuth } from './useAuth';
 
 export function useRecipes() {
-  const { user } = useAuth();
+  const { isLoggedIn } = useAuth();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loaded = loadRecipes();
-    // 给现有菜谱分配一个默认 userId（第一个用户）
-    if (loaded.length > 0 && loaded[0] && !('userId' in loaded[0])) {
-      const updated = loaded.map(r => ({ ...r, userId: 'demo_user' }));
-      saveRecipes(updated);
-      setRecipes(updated);
-    } else {
-      setRecipes(loaded);
+  // 从后端加载所有菜谱
+  const fetchRecipes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await recipesApi.list({ pageSize: 200 });
+      if (result.code === 0) {
+        setRecipes(result.data.list as Recipe[]);
+      }
+    } catch (err) {
+      console.error('加载菜谱失败:', err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const persist = useCallback((updated: Recipe[]) => {
-    setRecipes(updated);
-    saveRecipes(updated);
-  }, []);
+  useEffect(() => {
+    fetchRecipes();
+  }, [fetchRecipes, isLoggedIn]); // 登录状态变化时重新加载（以获取 isFavorite 状态）
 
   const addRecipe = useCallback(
-    (data: RecipeFormData): Recipe => {
-      const now = new Date().toISOString();
-      const recipe: Recipe = {
-        ...data,
-        id: generateId(),
-        userId: user?.id || 'anonymous',
-        isFavorite: false,
-        createdAt: now,
-        updatedAt: now,
-      };
-      persist([recipe, ...recipes]);
-      return recipe;
+    async (data: RecipeFormData): Promise<Recipe> => {
+      const result = await recipesApi.create(data);
+      if (result.code !== 0) throw new Error(result.message);
+      const newRecipe = result.data as Recipe;
+      setRecipes(prev => [newRecipe, ...prev]);
+      return newRecipe;
     },
-    [recipes, persist, user]
+    []
   );
 
   const updateRecipe = useCallback(
-    (id: string, data: Partial<RecipeFormData>): void => {
-      const updated = recipes.map(r =>
-        r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r
+    async (id: string, data: Partial<RecipeFormData>): Promise<void> => {
+      // 先乐观更新本地状态
+      setRecipes(prev =>
+        prev.map(r => r.id === id ? { ...r, ...data, updatedAt: new Date().toISOString() } : r)
       );
-      persist(updated);
+      try {
+        // 获取完整的菜谱数据再更新
+        const current = recipes.find(r => r.id === id);
+        if (current) {
+          const merged = { ...current, ...data };
+          const result = await recipesApi.update(id, merged);
+          if (result.code === 0) {
+            setRecipes(prev =>
+              prev.map(r => r.id === id ? (result.data as Recipe) : r)
+            );
+          }
+        }
+      } catch (err) {
+        console.error('更新菜谱失败:', err);
+        fetchRecipes(); // 失败时重新加载
+      }
     },
-    [recipes, persist]
+    [recipes, fetchRecipes]
   );
 
   const deleteRecipe = useCallback(
-    (id: string): void => {
-      persist(recipes.filter(r => r.id !== id));
+    async (id: string): Promise<void> => {
+      // 乐观更新
+      setRecipes(prev => prev.filter(r => r.id !== id));
+      try {
+        const result = await recipesApi.delete(id);
+        if (result.code !== 0) {
+          throw new Error(result.message);
+        }
+      } catch (err) {
+        console.error('删除菜谱失败:', err);
+        fetchRecipes(); // 失败时重新加载
+      }
     },
-    [recipes, persist]
+    [fetchRecipes]
   );
 
   const toggleFavorite = useCallback(
-    (id: string, folderId?: string): void => {
-      const updated = recipes.map(r => {
-        if (r.id === id) {
-          if (!r.isFavorite) {
-            // 收藏：设置收藏夹
-            return { ...r, isFavorite: true, favoriteFolderId: folderId || 'default' };
-          } else {
-            // 取消收藏
-            return { ...r, isFavorite: false, favoriteFolderId: undefined };
-          }
+    async (id: string, folderId?: string): Promise<void> => {
+      const recipe = recipes.find(r => r.id === id);
+      if (!recipe) return;
+
+      // 乐观更新 UI
+      const newFav = !recipe.isFavorite;
+      setRecipes(prev =>
+        prev.map(r =>
+          r.id === id
+            ? { ...r, isFavorite: newFav, favoriteFolderId: newFav ? (folderId || 'default') : undefined }
+            : r
+        )
+      );
+
+      try {
+        if (newFav) {
+          await recipesApi.favorite(id, folderId);
+        } else {
+          await recipesApi.unfavorite(id);
         }
-        return r;
-      });
-      persist(updated);
+      } catch (err) {
+        console.error('收藏操作失败:', err);
+        // 回滚
+        setRecipes(prev =>
+          prev.map(r => r.id === id ? { ...r, isFavorite: recipe.isFavorite, favoriteFolderId: recipe.favoriteFolderId } : r)
+        );
+      }
     },
-    [recipes, persist]
+    [recipes]
   );
 
-  return { recipes, addRecipe, updateRecipe, deleteRecipe, toggleFavorite };
+  return { recipes, loading, addRecipe, updateRecipe, deleteRecipe, toggleFavorite, refetch: fetchRecipes };
 }
