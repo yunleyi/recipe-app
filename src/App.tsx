@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRecipes } from '@/hooks/useRecipes';
 import { useAuth } from '@/hooks/useAuth';
 import { useFavoriteFolders } from '@/hooks/useFavoriteFolders';
@@ -7,8 +7,11 @@ import { RecipeDetail } from '@/sections/RecipeDetail';
 import { RecipeDetailPage } from '@/sections/RecipeDetailPage';
 import { RecipeForm } from '@/sections/RecipeForm';
 import { AuthModal } from '@/sections/AuthModal';
+import { UserMenu } from '@/components/UserMenu';
+import { AdminPanel } from '@/components/AdminPanel';
 import type { Recipe, RecipeFormData, Category } from '@/types/recipe';
 import { CATEGORIES } from '@/lib/recipeData';
+import { userApi } from '@/lib/api';
 import {
   Search, Plus, BookOpen, Heart, ChefHat, LayoutGrid, User, LogOut, Shield,
   FolderHeart, BookMarked, X, Check, FolderPlus, Settings, SlidersHorizontal,
@@ -39,6 +42,7 @@ export default function App() {
   const [myPageTab, setMyPageTab] = useState<'recipes' | 'favorites'>('recipes');
   const [selectedFolder, setSelectedFolder] = useState<string>('default');
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'profile' | 'general' | 'common' | 'category'>('profile');
 
   // 设置相关状态
@@ -66,7 +70,7 @@ export default function App() {
   ];
 
   // 加载保存的设置
-  useMemo(() => {
+  useEffect(() => {
     const saved = localStorage.getItem('user_settings');
     if (saved) {
       try {
@@ -78,8 +82,8 @@ export default function App() {
         if (settings.hiddenCategories !== undefined) setHiddenCategories(settings.hiddenCategories);
         if (settings.displayName !== undefined) setDisplayName(settings.displayName);
         if (settings.avatarColor !== undefined) setAvatarColor(settings.avatarColor);
-      } catch (e) {
-        // ignore
+      } catch {
+        // 忽略 JSON 解析异常
       }
     }
   }, []);
@@ -300,13 +304,15 @@ export default function App() {
             {/* 桌面端按钮 - 始终显示 */}
             <div className="hidden md:flex items-center gap-2 flex-shrink-0">
               {isLoggedIn ? (
-                <button
-                  onClick={() => setShowForm(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[13px] font-medium transition-colors"
-                >
-                  <Plus size={15} />
-                  <span>新建菜谱</span>
-                </button>
+                <UserMenu
+                  onNewRecipe={() => setShowForm(true)}
+                  onProfile={() => { setSettingsTab('profile'); setShowSettings(true); }}
+                  onFavorites={() => { setPage('favorites'); setSelectedCategory('all'); }}
+                  onMyRecipes={() => { setPage('recipes'); setSelectedCategory('all'); }}
+                  onSettings={() => setShowSettings(true)}
+                  onAdmin={() => setShowAdminPanel(true)}
+                  onReview={() => { setShowAdminPanel(true); /* 审核面板暂复用管理后台 */ }}
+                />
               ) : (
                 <button
                   onClick={() => setShowAuth('login')}
@@ -421,9 +427,14 @@ export default function App() {
               <div className="bg-white rounded-2xl p-5 mb-4">
                 {isLoggedIn ? (
                   <div className="flex items-center gap-4">
-                    <div className={`w-14 h-14 rounded-full ${avatarColor} flex items-center justify-center`}>
-                      <User size={24} className="text-orange-600" />
-                    </div>
+                    {/* 头像 - 点击进入个人资料 */}
+                    <button
+                      onClick={() => { setSettingsTab('profile'); setShowSettings(true); }}
+                      className={`w-14 h-14 rounded-full ${isAdmin ? 'bg-orange-500 text-white' : avatarColor} ${isAdmin ? '' : avatarColors.find(c => c.name === avatarColor)?.text || 'text-orange-600'} flex items-center justify-center text-[20px] font-bold cursor-pointer hover:opacity-90 transition-opacity`}
+                      title="个人资料"
+                    >
+                      {(displayName || user?.username)?.charAt(0)?.toUpperCase() || 'U'}
+                    </button>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h2 className="text-[16px] font-semibold text-gray-900">{displayName || user?.username}</h2>
@@ -455,9 +466,29 @@ export default function App() {
                       >
                         登录 / 注册
                       </button>
-                    </div>
-                  )}
+                  </div>
+                )}
               </div>
+
+              {/* 管理员专属入口 */}
+              {isAdmin && (
+                <div className="bg-white rounded-2xl p-3 mb-3 flex gap-2">
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[13px] font-medium text-orange-600 transition-colors"
+                  >
+                    <Shield size={14} />
+                    管理后台
+                  </button>
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[13px] font-medium text-orange-600 transition-colors"
+                  >
+                    <BookOpen size={14} />
+                    菜谱审核
+                  </button>
+                </div>
+              )}
 
               {/* 下部分：选项卡切换（菜谱 / 收藏） */}
               <div className="bg-white rounded-2xl overflow-hidden">
@@ -839,6 +870,54 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  {/* 修改密码 */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <h4 className="text-[13px] font-medium text-gray-700 mb-3">修改密码</h4>
+                    <div className="space-y-2.5">
+                      <input
+                        type="password"
+                        placeholder="当前密码"
+                        id="settings-old-pwd"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400"
+                      />
+                      <input
+                        type="password"
+                        placeholder="新密码（6-20 位）"
+                        id="settings-new-pwd"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400"
+                      />
+                      <input
+                        type="password"
+                        placeholder="确认新密码"
+                        id="settings-confirm-pwd"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-[14px] outline-none focus:border-orange-400"
+                      />
+                      <button
+                        onClick={async () => {
+                          const oldPwd = (document.getElementById('settings-old-pwd') as HTMLInputElement).value;
+                          const newPwd = (document.getElementById('settings-new-pwd') as HTMLInputElement).value;
+                          const confirmPwd = (document.getElementById('settings-confirm-pwd') as HTMLInputElement).value;
+                          if (!oldPwd || !newPwd) { alert('请填写当前密码和新密码'); return; }
+                          if (newPwd.length < 6 || newPwd.length > 20) { alert('新密码需为 6-20 位'); return; }
+                          if (newPwd !== confirmPwd) { alert('两次输入的密码不一致'); return; }
+                          try {
+                            const res = await userApi.updatePassword(oldPwd, newPwd);
+                            if (res.code === 0) {
+                              alert('密码修改成功');
+                              (document.getElementById('settings-old-pwd') as HTMLInputElement).value = '';
+                              (document.getElementById('settings-new-pwd') as HTMLInputElement).value = '';
+                              (document.getElementById('settings-confirm-pwd') as HTMLInputElement).value = '';
+                            } else {
+                              alert(res.message || '修改失败');
+                            }
+                          } catch { alert('网络错误'); }
+                        }}
+                        className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-[14px] text-gray-700 rounded-xl transition-colors"
+                      >
+                        修改密码
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -983,18 +1062,29 @@ export default function App() {
                 取消
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   // 保存设置到 localStorage
                   localStorage.setItem('user_settings', JSON.stringify({
-                    displayName, email, darkMode, compactMode, autoSave,
-                    notifications, language, gridColumns, hiddenCategories, avatarColor
+                    displayName, darkMode, compactMode, autoSave,
+                    notifications, gridColumns, hiddenCategories, avatarColor
                   }));
-                  // 更新用户显示名称
+                  // 如果修改了用户名，同步到后端
                   if (user && displayName !== user.username) {
-                    const updatedUser = { ...user, username: displayName };
-                    localStorage.setItem('current_user', JSON.stringify(updatedUser));
-                    // 刷新页面以应用更改
-                    window.location.reload();
+                    try {
+                      const res = await userApi.updateProfile(displayName);
+                      if (res.code === 0) {
+                        // 更新 localStorage 中的用户数据
+                        const stored = localStorage.getItem('recipe_app_auth');
+                        if (stored) {
+                          const data = JSON.parse(stored);
+                          data.user.username = displayName;
+                          localStorage.setItem('recipe_app_auth', JSON.stringify(data));
+                        }
+                        setDisplayName(displayName);
+                      }
+                    } catch {
+                      // 忽略
+                    }
                   }
                   setShowSettings(false);
                 }}
@@ -1005,6 +1095,11 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 管理后台面板 */}
+      {showAdminPanel && isAdmin && (
+        <AdminPanel onClose={() => setShowAdminPanel(false)} />
       )}
     </div>
   );

@@ -61,10 +61,16 @@ export function useFavoriteFolders() {
     }
   }, [fetchFolders]);
 
-  const renameFolder = useCallback((_id: string, _name: string) => {
-    // 暂时只做本地更新（后续可扩展 API）
-    setFolders(prev => prev.map(f => f.id === _id ? { ...f, name: _name } : f));
-  }, []);
+  const renameFolder = useCallback(async (id: string, name: string) => {
+    if (id.startsWith('default_') || id === 'default') return;
+    try {
+      setFolders(prev => prev.map(f => f.id === id ? { ...f, name } : f));
+      await userApi.renameFolder(id, name);
+    } catch (err) {
+      console.error('重命名收藏夹失败:', err);
+      fetchFolders(); // 失败时重新加载
+    }
+  }, [fetchFolders]);
 
   return { folders, addFolder, deleteFolder, renameFolder };
 }

@@ -23,7 +23,8 @@ interface LightboxProps {
 function MediaLightbox({ media, onClose }: LightboxProps) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const isDragging = useRef(false);
+  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const lastPos = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,12 +60,13 @@ function MediaLightbox({ media, onClose }: LightboxProps) {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (scale <= 1) return;
-    isDragging.current = true;
+    isDraggingRef.current = true;
+    setIsDragging(true);
     dragStart.current = { x: e.clientX - lastPos.current.x, y: e.clientY - lastPos.current.y };
   };
 
   const handleMouseMove = useCallback((e: React.MouseEvent | MouseEvent) => {
-    if (!isDragging.current) return;
+    if (!isDraggingRef.current) return;
     const clientX = 'clientX' in e ? e.clientX : 0;
     const clientY = 'clientY' in e ? e.clientY : 0;
     lastPos.current = {
@@ -75,7 +77,8 @@ function MediaLightbox({ media, onClose }: LightboxProps) {
   }, []);
 
   const handleMouseUp = () => {
-    isDragging.current = false;
+    isDraggingRef.current = false;
+    setIsDragging(false);
   };
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -155,7 +158,7 @@ function MediaLightbox({ media, onClose }: LightboxProps) {
             className="max-w-full max-h-full object-contain select-none cursor-grab active:cursor-grabbing"
             style={{
               transform: `scale(${scale}) translate(${position.x / scale}px, ${position.y / scale}px)`,
-              transition: isDragging.current ? 'none' : 'transform 0.2s ease',
+              transition: isDragging ? 'none' : 'transform 0.2s ease',
             }}
             onClick={e => e.stopPropagation()}
             onMouseDown={handleMouseDown}

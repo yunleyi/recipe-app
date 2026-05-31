@@ -199,7 +199,9 @@ export function loadRecipes(): Recipe[] {
     if (stored) {
       return JSON.parse(stored);
     }
-  } catch {}
+  } catch {
+    // 忽略 localStorage 解析异常
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecipes));
   return initialRecipes;
 }

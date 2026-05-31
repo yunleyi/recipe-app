@@ -59,6 +59,7 @@ export interface Recipe {
   isFavorite: boolean;
   favoriteFolderId?: string; // 收藏夹ID，不填则为默认收藏夹
   userId: string; // 所属用户 ID
+  status?: 'pending' | 'approved' | 'rejected'; // 审核状态
   createdAt: string;
   updatedAt: string;
 }

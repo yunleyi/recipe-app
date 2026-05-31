@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Recipe, RecipeFormData, Ingredient, Step, StepMedia, Category, Difficulty } from '@/types/recipe';
 import { CATEGORIES, DIFFICULTIES } from '@/lib/recipeData';
-import { X, Plus, Trash2, Image, Video, Save } from 'lucide-react';
+import { X, Plus, Trash2, Image, Video, Save, Upload, Loader2 } from 'lucide-react';
+import { uploadApi } from '@/lib/api';
 
 interface RecipeFormProps {
   initial?: Recipe;
@@ -24,7 +25,7 @@ const emptyForm = (): RecipeFormData => ({
 
 const DRAFT_KEY = 'recipe_draft';
 
-// 媒体 URL 输入弹窗
+// 媒体 URL 输入弹窗（支持上传和 URL 输入）
 function MediaUrlInput({
   type,
   onConfirm,
@@ -34,29 +35,94 @@ function MediaUrlInput({
   onConfirm: (url: string, caption: string) => void;
   onClose: () => void;
 }) {
+  const [mode, setMode] = useState<'url' | 'upload'>('url');
   const [url, setUrl] = useState('');
   const [caption, setCaption] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadApi.image(file);
+      if (res.code === 0 && res.data.url) {
+        onConfirm(res.data.url, caption.trim() || file.name);
+        onClose();
+      }
+    } catch {
+      alert('上传失败，请重试');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-2xl shadow-2xl p-5 mx-4 w-full max-w-sm">
         <h4 className="text-[15px] font-semibold text-gray-900 mb-4">
           插入{type === 'image' ? '图片' : '视频'}
         </h4>
+        {/* 模式切换 */}
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-4">
+          <button
+            type="button"
+            onClick={() => setMode('url')}
+            className={`flex-1 py-1.5 text-[12px] font-medium rounded-lg transition-colors ${mode === 'url' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+          >
+            URL 输入
+          </button>
+          {type === 'image' && (
+            <button
+              type="button"
+              onClick={() => setMode('upload')}
+              className={`flex-1 py-1.5 text-[12px] font-medium rounded-lg transition-colors ${mode === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+            >
+              本地上传
+            </button>
+          )}
+        </div>
         <div className="space-y-3">
-          <input
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-orange-100"
-            placeholder={type === 'image' ? '图片 URL（如 https://...）' : '视频 URL（如 https://...mp4）'}
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            autoFocus
-          />
+          {mode === 'url' ? (
+            <>
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-orange-100"
+                placeholder={type === 'image' ? '图片 URL（如 https://...）' : '视频 URL（如 https://...mp4）'}
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                autoFocus
+              />
+            </>
+          ) : (
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl py-8 cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
+              {uploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 size={24} className="animate-spin text-orange-500" />
+                  <span className="text-[13px] text-gray-500">上传中...</span>
+                </div>
+              ) : (
+                <>
+                  <Upload size={24} className="text-gray-400 mb-2" />
+                  <span className="text-[13px] text-gray-500">点击上传图片</span>
+                  <span className="text-[11px] text-gray-400">支持 JPG/PNG/WebP，最大 5MB</span>
+                </>
+              )}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleUpload}
+                className="hidden"
+                disabled={uploading}
+              />
+            </label>
+          )}
           <input
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-orange-100"
             placeholder="图注说明（可选）"
             value={caption}
             onChange={e => setCaption(e.target.value)}
           />
-          {url && type === 'image' && (
+          {url && type === 'image' && mode === 'url' && (
             <div className="rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
               <img
                 src={url}
@@ -77,8 +143,8 @@ function MediaUrlInput({
           </button>
           <button
             type="button"
-            disabled={!url.trim()}
-            onClick={() => { if (url.trim()) { onConfirm(url.trim(), caption.trim()); onClose(); } }}
+            disabled={mode === 'url' ? !url.trim() : uploading}
+            onClick={() => { if (mode === 'url' && url.trim()) { onConfirm(url.trim(), caption.trim()); onClose(); } }}
             className="flex-1 py-2.5 bg-orange-500 disabled:opacity-40 text-white rounded-xl text-[13px] font-medium"
           >
             插入
@@ -271,12 +337,41 @@ export function RecipeForm({ initial, onSave, onCancel }: RecipeFormProps) {
                 />
                 {errors.description && <p className="text-red-500 text-[12px] mt-1">{errors.description}</p>}
               </div>
-              <input
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-orange-200"
-                placeholder="封面图片 URL（留空使用默认图）"
-                value={form.coverImage}
-                onChange={e => set('coverImage', e.target.value)}
-              />
+              <div className="flex gap-2 items-center">
+                <input
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] outline-none focus:ring-2 focus:ring-orange-200"
+                  placeholder="封面图片 URL（留空使用默认图）"
+                  value={form.coverImage}
+                  onChange={e => set('coverImage', e.target.value)}
+                />
+                <label className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-[13px] text-gray-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 cursor-pointer transition-colors">
+                  <Upload size={14} />
+                  上传
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const res = await uploadApi.image(file);
+                        if (res.code === 0 && res.data.url) {
+                          set('coverImage', res.data.url);
+                        }
+                      } catch {
+                        alert('上传失败，请重试');
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+              {form.coverImage && (
+                <div className="mt-2 rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                  <img src={form.coverImage} alt="封面预览" className="w-full max-h-40 object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                </div>
+              )}
             </div>
           </section>
 

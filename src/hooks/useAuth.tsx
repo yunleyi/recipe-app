@@ -43,6 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
+
+    // 监听 token 过期事件（来自 api.ts 自动刷新失败时）
+    const handleAuthExpired = () => {
+      localStorage.removeItem(STORAGE_KEY);
+      setAuth({
+        user: null,
+        token: null,
+        isLoggedIn: false,
+        isAdmin: false,
+      });
+    };
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
   }, []);
 
   const login = async (account: string, password: string): Promise<{ success: boolean; message: string }> => {
